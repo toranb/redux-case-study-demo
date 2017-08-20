@@ -1,35 +1,53 @@
 import _ from 'lodash';
 import reselect from 'reselect';
+import { normalize, schema } from 'normalizr';
+import shallowEqual from 'shallow-equal';
+
+const reviewSchema = new schema.Entity('reviews');
+const restaurantSchema = new schema.Entity('restaurants', {
+  reviews: [reviewSchema]
+});
 
 const { createSelector } = reselect;
 
 const initialState = {
   all: undefined,
+  reviews: undefined,
   selectedId: undefined
 };
 
 export default ((state, action) => {
   switch(action.type) {
     case 'RESTAURANTS:TRANSFORM_LIST': {
-      const restaurants = _.keyBy(action.response, r => r.id);
+      const normalized = normalize(action.response, [restaurantSchema]);
+      const { restaurants, reviews } = normalized.entities;
       return {
         ...state,
-        all: {...state.all, ...restaurants}
+        all: {...state.all, ...restaurants},
+        reviews: {...state.reviews, ...reviews}
       }
     }
     case 'RESTAURANTS:TRANSFORM_DETAIL': {
       const restaurant = {[action.response.id]: action.response};
+      const normalized = normalize(restaurant, [restaurantSchema]);
+      const { restaurants, reviews } = normalized.entities;
       return {
         ...state,
-        all: {...state.all, ...restaurant},
+        all: {...state.all, ...restaurants},
+        reviews: {...state.reviews, ...reviews},
         selectedId: action.response.id
       }
     }
     case 'RESTAURANTS:RATE': {
       const restaurant = {[action.response.id]: action.response};
+      const normalized = normalize(restaurant, [restaurantSchema]);
+      const { restaurants, reviews } = normalized.entities;
+      const id = action.response.id;
+      const merged = shallowEqual(state.all[id], restaurants[id]) ? state.all : {...state.all, ...restaurants};
       return {
         ...state,
-        all: {...state.all, ...restaurant}
+        all: merged,
+        reviews: {...state.reviews, ...reviews}
       }
     }
     default: {
@@ -39,6 +57,7 @@ export default ((state, action) => {
 });
 
 const all = state => state.restaurants.all;
+const reviews = state => state.restaurants.reviews;
 const selectedId = state => state.restaurants.selectedId;
 
 export const getSelectedId = createSelector(
@@ -58,8 +77,9 @@ export const getSelectedRestaurant = createSelector(
 );
 
 export const getReviews = createSelector(
+  reviews,
   getSelectedRestaurant,
-  (selectedRestaurant) => {
-    return selectedRestaurant.reviews;
+  (reviews, selectedRestaurant) => {
+    return selectedRestaurant.reviews.map(reviewId => reviews[reviewId]);
   }
 );
